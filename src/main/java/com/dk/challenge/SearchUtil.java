@@ -5,6 +5,9 @@ import java.util.List;
 
 public final class SearchUtil {
 
+    private static final int FORWARD_LOOP_INCREMENT = 1;
+    private static final int BACKWARD_LOOP_INCREMENT = -1;
+
     /**
      * Searches the data between indexBegin and indexEnd for a range of length winLength where all values are above the
      * threshold.
@@ -14,24 +17,13 @@ public final class SearchUtil {
     public int searchContinuityAboveValue(List<Double> data, int indexBegin, int indexEnd, double threshold, int winLength)
             throws InvalidInputExcpeption {
         validateInput(data, indexBegin, indexEnd, threshold, Integer.MAX_VALUE, winLength);
-        int startPosition = indexBegin;
-        int lastPossibleStartPosition = indexEnd - winLength + 1;
-
-        while (startPosition <= lastPossibleStartPosition) {
-            boolean validRange = true;
-            for (int i = startPosition; i < startPosition + winLength; i++) {
-                if (!isValidValue(data.get(i), threshold, Integer.MAX_VALUE)) {
-                    startPosition = i + 1;
-                    validRange = false;
-                    break;
-                }
-            }
-            if (validRange) {
-                return startPosition;
-            }
-        }
-
-        return -1;
+        List<Range> ranges = searchHelper(
+                indexBegin,
+                FORWARD_LOOP_INCREMENT,
+                winLength,
+                index -> isValueInThresholds(data.get(index), threshold, Integer.MAX_VALUE),
+                (results, currentIndex) -> results.size() != 1 && (currentIndex <= indexEnd));
+        return getFirstIndexFromRanges(ranges);
     }
 
     /**
@@ -43,25 +35,13 @@ public final class SearchUtil {
     public int backSearchContinuityWithinRange(List<Double> data, int indexBegin, int indexEnd, double thresholdLo,
                                                double thresholdHi, int winLength) throws InvalidInputExcpeption {
         validateInput(data, indexEnd, indexBegin, thresholdLo, thresholdHi, winLength);
-
-        int startPosition = indexBegin;
-        int lastPossibleStartPosition = indexEnd + winLength - 1;
-
-        while (startPosition >= lastPossibleStartPosition) {
-            boolean validRange = true;
-            for (int i = startPosition; i > startPosition - winLength; i--) {
-                if (!isValidValue(data.get(i), thresholdLo, thresholdHi)) {
-                    startPosition = i - 1;
-                    validRange = false;
-                    break;
-                }
-            }
-            if (validRange) {
-                return startPosition;
-            }
-        }
-
-        return -1;
+        List<Range> ranges = searchHelper(
+                indexBegin,
+                BACKWARD_LOOP_INCREMENT,
+                winLength,
+                index -> isValueInThresholds(data.get(index), thresholdLo, thresholdHi),
+                (results, currentIndex) -> results.size() != 1 && (currentIndex >= indexEnd));
+        return getFirstIndexFromRanges(ranges);
     }
 
     /**
@@ -75,24 +55,15 @@ public final class SearchUtil {
         validateInput(data1, indexBegin, indexEnd, threshold1, Integer.MAX_VALUE, winLength);
         validateInput(data2, indexBegin, indexEnd, threshold2, Integer.MAX_VALUE, winLength);
 
-        int startPosition = indexBegin;
-        int lastPossibleStartPosition = indexEnd - winLength + 1;
-
-        while (startPosition <= lastPossibleStartPosition) {
-            boolean validRange = true;
-            for (int i = startPosition; i < startPosition + winLength; i++) {
-                if (data1.get(i) <= threshold1 || data2.get(i) <= threshold2) {
-                    startPosition = i + 1;
-                    validRange = false;
-                    break;
-                }
-            }
-            if (validRange) {
-                return startPosition;
-            }
-        }
-
-        return -1;
+        List<Range> ranges = searchHelper(
+                indexBegin,
+                FORWARD_LOOP_INCREMENT,
+                winLength,
+                index -> (
+                        isValueInThresholds(data1.get(index), threshold1, Integer.MAX_VALUE) &&
+                                isValueInThresholds(data2.get(index), threshold2, Integer.MAX_VALUE)),
+                (results, currentIndex) -> results.size() != 1 && (currentIndex <= indexEnd));
+        return getFirstIndexFromRanges(ranges);
     }
 
     /**
@@ -104,39 +75,38 @@ public final class SearchUtil {
     public List<Range> searchMultiContinuityWithinRange(List<Double> data, int indexBegin, int indexEnd, double thresholdLo,
                                                         double thresholdHi, int winLength) throws InvalidInputExcpeption {
         validateInput(data, indexBegin, indexEnd, thresholdLo, thresholdHi, winLength);
-
-
-        List<Range> validRanges = new ArrayList<>();
-        boolean isPreviousRangeValid = false;
-        for (int i = indexBegin; i <= indexEnd - winLength + 1; i++) {
-            if (isPreviousRangeValid) {
-                // If the previous range is valid, we only need to check the next element to see if it's valid, no
-                // need to check any values that were part of the previous range
-                int endRangeIndex = i + winLength - 1;
-                Double nextValue = data.get(endRangeIndex);
-                if (isValidValue(nextValue, thresholdLo, thresholdHi)) {
-                    validRanges.add(new Range(i, endRangeIndex));
-                } else {
-                    isPreviousRangeValid = false;
-                }
-            } else {
-                boolean isValidStartIndex = true;
-                for (int j = i; j < i + winLength; j++) {
-                    if (!isValidValue(data.get(j), thresholdLo, thresholdHi)) {
-                        isValidStartIndex = false;
-                        break;
-                    }
-                }
-                if (isValidStartIndex) {
-                    validRanges.add(new Range(i, i + winLength - 1));
-                    isPreviousRangeValid = true;
-                }
-            }
-        }
-        return validRanges;
+        return searchHelper(
+                indexBegin,
+                FORWARD_LOOP_INCREMENT,
+                winLength,
+                index -> isValueInThresholds(data.get(index), thresholdLo, thresholdHi),
+                (results, currentIndex) -> (currentIndex <= indexEnd));
     }
 
-    private boolean isValidValue(double value, double thresholdLo, double thresholdHi) {
+    private List<Range> searchHelper(int indexBegin, int loopIncrement, int winLength,
+                                     IsIndexValidFunction validIndexFunction,
+                                     KeepSearchingFunction keepSearchingFunction) {
+        List<Range> results = new ArrayList<>();
+        List<Integer> currentStreak = new ArrayList<>();
+
+        for (int i = indexBegin; keepSearchingFunction.apply(results, i); i += loopIncrement) {
+            if (validIndexFunction.apply(i)) {
+                currentStreak.add(i);
+            } else {
+                if (currentStreak.size() >= winLength) {
+                    results.add(new Range(currentStreak.get(0), currentStreak.get(currentStreak.size() - 1)));
+                }
+                currentStreak = new ArrayList<>();
+            }
+        }
+
+        if (currentStreak.size() >= winLength) {
+            results.add(new Range(currentStreak.get(0), currentStreak.get(currentStreak.size() - 1)));
+        }
+        return results;
+    }
+
+    private boolean isValueInThresholds(double value, double thresholdLo, double thresholdHi) {
         return value > thresholdLo && value < thresholdHi;
     }
 
@@ -146,5 +116,9 @@ public final class SearchUtil {
                 data.size() <= highIndex || thresholdLo > thresholdHi) {
             throw new InvalidInputExcpeption();
         }
+    }
+
+    private int getFirstIndexFromRanges(List<Range> ranges) {
+        return ranges.size() < 1 ? -1 : ranges.get(0).getBeginIndex();
     }
 }

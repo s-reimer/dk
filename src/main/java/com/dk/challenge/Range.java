@@ -25,6 +25,14 @@ public class Range {
                 endIndex == range.endIndex;
     }
 
+    public int getBeginIndex() {
+        return beginIndex;
+    }
+
+    public int getEndIndex() {
+        return endIndex;
+    }
+
     @Override
     public int hashCode() {
         return Objects.hash(beginIndex, endIndex);

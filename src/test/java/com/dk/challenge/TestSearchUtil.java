@@ -121,7 +121,7 @@ public class TestSearchUtil {
     }
 
     @Test
-    public void testSearchMultiContinuityWithinRange_oneMatch() throws InvalidInputExcpeption {
+    public void testSearchMultiContinuityWithinRange_minLength() throws InvalidInputExcpeption {
         List<Double> data = Arrays.asList(2.0, 2.0, 2.0, 2.0);
         List<Range> actual = searchUtil.searchMultiContinuityWithinRange(data, 0, 3, 0, 4, 4);
 
@@ -130,20 +130,11 @@ public class TestSearchUtil {
     }
 
     @Test
-    public void testSearchMultiContinuityWithinRange_overlappingMatch() throws InvalidInputExcpeption {
-        List<Double> data = Arrays.asList(2.0, 2.0, 2.0, 2.0);
+    public void testSearchMultiContinuityWithinRange_longerThanMinLength() throws InvalidInputExcpeption {
+        List<Double> data = Arrays.asList(2.0, 2.0, 2.0, 1.0);
         List<Range> actual = searchUtil.searchMultiContinuityWithinRange(data, 0, 3, 0, 4, 2);
 
-        List<Range> expected = Arrays.asList(new Range(0, 1), new Range(1, 2), new Range(2, 3));
-        assertEquals(expected, actual);
-    }
-
-    @Test
-    public void testSearchMultiContinuityWithinRange_distinctMatch() throws InvalidInputExcpeption {
-        List<Double> data = Arrays.asList(2.0, 2.0, 1.0, 2.0, 2.0);
-        List<Range> actual = searchUtil.searchMultiContinuityWithinRange(data, 0, 4, 1.5, 4, 2);
-
-        List<Range> expected = Arrays.asList(new Range(0, 1), new Range(3, 4));
+        List<Range> expected = Arrays.asList(new Range(0, 3));
         assertEquals(expected, actual);
     }
 
